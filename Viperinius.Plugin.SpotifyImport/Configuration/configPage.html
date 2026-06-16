@@ -240,6 +240,62 @@
                         </div>
                     </div>
 
+                    <div class="sectionTitleContainer flex align-items-center">
+                        <h3 class="sectionTitle">Lidarr Integration</h3>
+                    </div>
+                    <div class="verticalSection">
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="LidarrEnabled" name="LidarrEnabled" type="checkbox" is="emby-checkbox" />
+                                <span>Enable Lidarr integration (send missing tracks to Lidarr for download).</span>
+                            </label>
+                        </div>
+                        <div id="lidarrConfigSection">
+                            <div class="inputContainer">
+                                <input id="LidarrUrl" type="text" is="emby-input" label="Lidarr Server URL" />
+                                <div class="fieldDescription">
+                                    The base URL of your Lidarr instance (ex.: http://lidarr:8686).
+                                </div>
+                            </div>
+                            <div class="inputContainer">
+                                <input id="LidarrApiKey" type="password" is="emby-input" label="Lidarr API Key" />
+                                <div class="fieldDescription">
+                                    API key from Lidarr (Settings &gt; General &gt; API Key).
+                                </div>
+                            </div>
+                            <div class="inputContainer">
+                                <input id="LidarrRootFolderPath" type="text" is="emby-input" label="Root Folder Path" />
+                                <div class="fieldDescription">
+                                    Root folder where Lidarr should store downloaded music.
+                                </div>
+                            </div>
+                            <div class="inputContainer">
+                                <input id="LidarrQualityProfileId" type="text" is="emby-input" type="number" pattern="[0-9]+" min="1" label="Quality Profile ID" />
+                                <div class="fieldDescription">
+                                    The ID of the quality profile to use (default: 1). Find IDs in Lidarr under Settings &gt; Profiles.
+                                </div>
+                            </div>
+                            <div class="inputContainer">
+                                <input id="LidarrMetadataProfileId" type="text" is="emby-input" type="number" pattern="[0-9]+" min="1" label="Metadata Profile ID" />
+                                <div class="fieldDescription">
+                                    The ID of the metadata profile to use (default: 1). Find IDs in Lidarr under Settings &gt; Profiles.
+                                </div>
+                            </div>
+                            <div class="checkboxContainer checkboxContainer-withDescription">
+                                <label class="emby-checkbox-label">
+                                    <input id="LidarrAutoSync" name="LidarrAutoSync" type="checkbox" is="emby-checkbox" />
+                                    <span>Enable automatic scheduled Lidarr sync (daily at 4 AM).</span>
+                                </label>
+                            </div>
+                            <div class="verticalSection">
+                                <button is="emby-button" type="button" id="testLidarrConnection" class="raised block">
+                                    <span>Test Lidarr Connection</span>
+                                </button>
+                                <div id="lidarrTestResult" class="fieldDescription"></div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
                             <span>Save</span>

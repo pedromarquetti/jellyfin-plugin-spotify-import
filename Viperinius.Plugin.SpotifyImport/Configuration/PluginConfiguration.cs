@@ -3,6 +3,7 @@
 using System;
 using System.Xml.Serialization;
 using MediaBrowser.Model.Plugins;
+using Viperinius.Plugin.SpotifyImport.Lidarr;
 using Viperinius.Plugin.SpotifyImport.Matchers;
 using Viperinius.Plugin.SpotifyImport.Sync;
 
@@ -149,5 +150,10 @@ namespace Viperinius.Plugin.SpotifyImport.Configuration
         /// </summary>
         [XmlElement(IsNullable = true)]
         public SpotifyAPI.Web.PKCETokenResponse? SpotifyAuthToken { get; set; }
+
+        /// <summary>
+        /// Gets or sets the Lidarr configuration.
+        /// </summary>
+        public LidarrConfiguration Lidarr { get; set; } = new LidarrConfiguration();
     }
 }

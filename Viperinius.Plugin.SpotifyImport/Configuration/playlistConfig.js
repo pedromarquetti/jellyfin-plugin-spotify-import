@@ -306,6 +306,16 @@ export default function (view) {
             document.querySelector('#UseLegacyMatching').checked = config.UseLegacyMatching;
             mapEnabledTrackMatchFindersToCheckboxes(config);
 
+            // Lidarr config
+            const lidarr = config.Lidarr || {};
+            document.querySelector('#LidarrEnabled').checked = lidarr.Enabled || false;
+            document.querySelector('#LidarrUrl').value = lidarr.Url || '';
+            document.querySelector('#LidarrApiKey').value = lidarr.ApiKey || '';
+            document.querySelector('#LidarrRootFolderPath').value = lidarr.RootFolderPath || '';
+            document.querySelector('#LidarrQualityProfileId').value = lidarr.QualityProfileId || 1;
+            document.querySelector('#LidarrMetadataProfileId').value = lidarr.MetadataProfileId || 1;
+            document.querySelector('#LidarrAutoSync').checked = lidarr.AutoSync || false;
+
             ApiClient.getJSON(ApiClient.getUrl('Users'), apiQueryOpts).then(function (result) {
                 users.length = 0;
                 result.forEach(user => {
@@ -371,6 +381,16 @@ export default function (view) {
             }
             config.UseLegacyMatching = document.querySelector('#UseLegacyMatching').checked;
             config.EnabledTrackMatchFindersRaw = getEnabledTrackMatchFindersFromCheckboxes();
+
+            config.Lidarr = {
+                Enabled: document.querySelector('#LidarrEnabled').checked,
+                Url: document.querySelector('#LidarrUrl').value,
+                ApiKey: document.querySelector('#LidarrApiKey').value,
+                RootFolderPath: document.querySelector('#LidarrRootFolderPath').value,
+                QualityProfileId: parseInt(document.querySelector('#LidarrQualityProfileId').value) || 1,
+                MetadataProfileId: parseInt(document.querySelector('#LidarrMetadataProfileId').value) || 1,
+                AutoSync: document.querySelector('#LidarrAutoSync').checked
+            };
 
             ApiClient.updatePluginConfiguration(SpotifyImportConfig.pluginUniqueId, config).then(function (result) {
                 Dashboard.processPluginConfigurationUpdateResult(result);
@@ -448,6 +468,49 @@ export default function (view) {
             }
             console.log('dump done');
         }).catch(function (error) {
+            console.error(error);
+        });
+    });
+
+    // Lidarr test connection
+    const testLidarrBtn = document.querySelector('#testLidarrConnection');
+    const lidarrTestResult = document.querySelector('#lidarrTestResult');
+    testLidarrBtn.addEventListener('click', function () {
+        const url = document.querySelector('#LidarrUrl').value;
+        const apiKey = document.querySelector('#LidarrApiKey').value;
+
+        if (!url || !apiKey) {
+            lidarrTestResult.innerHTML = '<span style="color: orange;">Please fill in both URL and API key first.</span>';
+            return;
+        }
+
+        testLidarrBtn.disabled = true;
+        lidarrTestResult.innerHTML = 'Testing connection...';
+
+        const apiUrl = ApiClient.getUrl(SpotifyImportConfig.pluginApiBaseUrl + '/Lidarr/TestConnection', {
+            url: url,
+            apiKey: apiKey
+        });
+
+        ApiClient.fetch({
+            url: apiUrl,
+            type: 'POST',
+            dataType: 'json',
+            headers: {
+                accept: 'application/json'
+            }
+        }, true).then(function (json) {
+            testLidarrBtn.disabled = false;
+            if (json && json.Success) {
+                const version = json.Version ? ' (v' + json.Version + ')' : '';
+                lidarrTestResult.innerHTML = '<span style="color: green;">&#10003; Connection successful' + version + '</span>';
+            } else {
+                const msg = json && json.Message ? json.Message : 'Unknown error';
+                lidarrTestResult.innerHTML = '<span style="color: red;">&#10007; ' + msg + '</span>';
+            }
+        }).catch(function (error) {
+            testLidarrBtn.disabled = false;
+            lidarrTestResult.innerHTML = '<span style="color: red;">&#10007; Request failed: ' + error + '</span>';
             console.error(error);
         });
     });
