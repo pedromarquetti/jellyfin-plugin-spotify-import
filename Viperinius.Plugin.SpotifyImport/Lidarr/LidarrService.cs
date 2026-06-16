@@ -54,13 +54,17 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
 
                 if (response.IsSuccessStatusCode)
                 {
+                    var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(json);
+                    var version = doc.RootElement.TryGetProperty("version", out var ver)
+                        ? ver.GetString()
+                        : null;
+
                     return new LidarrTestResult
                     {
                         Success = true,
                         Message = "Connection successful",
-                        Version = response.Headers.TryGetValues("X-Application-Version", out var versions)
-                            ? string.Join(", ", versions)
-                            : null,
+                        Version = version,
                     };
                 }
 

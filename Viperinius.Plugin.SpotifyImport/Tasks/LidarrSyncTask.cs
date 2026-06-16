@@ -9,6 +9,7 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
 using Viperinius.Plugin.SpotifyImport.Lidarr;
+using Viperinius.Plugin.SpotifyImport.Utils;
 
 namespace Viperinius.Plugin.SpotifyImport.Tasks
 {
@@ -83,7 +84,7 @@ namespace Viperinius.Plugin.SpotifyImport.Tasks
                 return;
             }
 
-            // collect unique albums from all missing track files
+            // collect unique albums and their ISRCs from all missing track files
             var uniqueAlbums = new Dictionary<string, AlbumData>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var file in missingFiles)
@@ -111,13 +112,19 @@ namespace Viperinius.Plugin.SpotifyImport.Tasks
                             : (track.ArtistNames.Count > 0 ? track.ArtistNames[0] : "Unknown Artist");
 
                         var key = $"{artist}|{track.AlbumName}";
-                        if (!uniqueAlbums.ContainsKey(key))
+                        if (!uniqueAlbums.TryGetValue(key, out var albumData))
                         {
-                            uniqueAlbums[key] = new AlbumData
+                            albumData = new AlbumData
                             {
                                 ArtistName = artist,
                                 AlbumName = track.AlbumName,
                             };
+                            uniqueAlbums[key] = albumData;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(track.IsrcId))
+                        {
+                            albumData.Isrcs.Add(track.IsrcId);
                         }
                     }
                 }
@@ -139,6 +146,9 @@ namespace Viperinius.Plugin.SpotifyImport.Tasks
             var albumList = uniqueAlbums.Values.ToList();
             var processed = 0;
 
+            using var dbRepo = new DbRepository(Plugin.Instance!.DbPath);
+            dbRepo.InitDb();
+
             foreach (var album in albumList)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -146,12 +156,30 @@ namespace Viperinius.Plugin.SpotifyImport.Tasks
 
                 _logger.LogInformation("Processing album: {Artist} - {Album}", album.ArtistName, album.AlbumName);
 
-                // TODO: MusicBrainz ID resolution needed for proper Lidarr lookup
-                // Current approach attempts lookup by album name which is a fallback
-                var lookupResult = await lidarrService.LookupAlbum(album.AlbumName ?? string.Empty).ConfigureAwait(false);
+                // resolve MusicBrainz release group ID from cached ISRC mappings
+                var releaseGroupIds = new HashSet<string>();
+                foreach (var isrc in album.Isrcs.Distinct())
+                {
+                    var mappings = dbRepo.GetIsrcMusicBrainzMapping(isrc: isrc);
+                    foreach (var mapping in mappings)
+                    {
+                        foreach (var rgId in mapping.MusicBrainzReleaseGroupIds)
+                        {
+                            releaseGroupIds.Add(rgId.ToString("D"));
+                        }
+                    }
+                }
+
+                if (releaseGroupIds.Count == 0)
+                {
+                    _logger.LogWarning("No MusicBrainz release group ID found in cache for album {Album} by {Artist}; skipping (ISRC-based MusicBrainz lookup may not have run yet)", album.AlbumName, album.ArtistName);
+                    continue;
+                }
+
+                var lookupResult = await lidarrService.LookupAlbum(releaseGroupIds.First()).ConfigureAwait(false);
                 if (lookupResult == null)
                 {
-                    _logger.LogWarning("Could not find album {Album} by {Artist} in Lidarr via lookup; MusicBrainz ID resolution will be added in a future update", album.AlbumName, album.ArtistName);
+                    _logger.LogWarning("Could not find album {Album} by {Artist} in Lidarr", album.AlbumName, album.ArtistName);
                     continue;
                 }
 
@@ -245,6 +273,8 @@ namespace Viperinius.Plugin.SpotifyImport.Tasks
             public string? ArtistName { get; set; }
 
             public string? AlbumName { get; set; }
+
+            public List<string> Isrcs { get; } = new();
         }
     }
 }
