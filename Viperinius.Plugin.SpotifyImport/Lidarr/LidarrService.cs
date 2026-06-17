@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -174,6 +175,178 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
             {
                 _logger.LogError(ex, "Failed to update album {Id} in Lidarr", id);
                 return false;
+            }
+        }
+
+        public async Task<LidarrAlbum?> SearchAlbum(string query)
+        {
+            try
+            {
+                using var req = CreateRequest(HttpMethod.Get, $"/api/v1/album/lookup?term={Uri.EscapeDataString(query)}");
+                var response = await _httpClient.SendAsync(req).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return null;
+                }
+
+                var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var results = JsonSerializer.Deserialize<LidarrAlbum[]>(content, _jsonOptions);
+                return results?.Length > 0 ? results[0] : null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to search album in Lidarr with query {Query}", query);
+                return null;
+            }
+        }
+
+        public async Task<LidarrArtist?> SearchArtist(string query)
+        {
+            try
+            {
+                using var req = CreateRequest(HttpMethod.Get, $"/api/v1/artist/lookup?term={Uri.EscapeDataString(query)}");
+                var response = await _httpClient.SendAsync(req).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return null;
+                }
+
+                var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var results = JsonSerializer.Deserialize<LidarrArtist[]>(content, _jsonOptions);
+                return results?.Length > 0 ? results[0] : null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to search artist in Lidarr with query {Query}", query);
+                return null;
+            }
+        }
+
+        public async Task<LidarrArtist?> AddArtist(LidarrAddArtistRequest request)
+        {
+            try
+            {
+                var json = JsonSerializer.Serialize(request, _jsonOptions);
+                using var req = CreateRequest(HttpMethod.Post, "/api/v1/artist");
+                req.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.SendAsync(req).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    _logger.LogError("Failed to add artist to Lidarr: HTTP {Code} - {Error}", (int)response.StatusCode, errorContent);
+                    return null;
+                }
+
+                var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                return JsonSerializer.Deserialize<LidarrArtist>(content, _jsonOptions);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to add artist to Lidarr");
+                return null;
+            }
+        }
+
+        public async Task<bool> UpdateArtist(int id, LidarrArtist artist)
+        {
+            try
+            {
+                var json = JsonSerializer.Serialize(artist, _jsonOptions);
+                using var req = CreateRequest(HttpMethod.Put, $"/api/v1/artist/{id}");
+                req.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.SendAsync(req).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to update artist {Id} in Lidarr", id);
+                return false;
+            }
+        }
+
+        public async Task<List<LidarrAlbum>> GetArtistAlbums(int artistId)
+        {
+            try
+            {
+                using var req = CreateRequest(HttpMethod.Get, $"/api/v1/album?artistId={artistId}");
+                var response = await _httpClient.SendAsync(req).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return new List<LidarrAlbum>();
+                }
+
+                var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                return JsonSerializer.Deserialize<List<LidarrAlbum>>(content, _jsonOptions) ?? new List<LidarrAlbum>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get albums for artist {Id} from Lidarr", artistId);
+                return new List<LidarrAlbum>();
+            }
+        }
+
+        public async Task<LidarrRootFolder[]?> GetRootFolders()
+        {
+            try
+            {
+                using var req = CreateRequest(HttpMethod.Get, "/api/v1/rootfolder");
+                var response = await _httpClient.SendAsync(req).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return null;
+                }
+
+                var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                return JsonSerializer.Deserialize<LidarrRootFolder[]>(content, _jsonOptions);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get root folders from Lidarr");
+                return null;
+            }
+        }
+
+        public async Task<LidarrQualityProfile[]?> GetQualityProfiles()
+        {
+            try
+            {
+                using var req = CreateRequest(HttpMethod.Get, "/api/v1/qualityprofile");
+                var response = await _httpClient.SendAsync(req).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return null;
+                }
+
+                var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                return JsonSerializer.Deserialize<LidarrQualityProfile[]>(content, _jsonOptions);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get quality profiles from Lidarr");
+                return null;
+            }
+        }
+
+        public async Task<LidarrMetadataProfile[]?> GetMetadataProfiles()
+        {
+            try
+            {
+                using var req = CreateRequest(HttpMethod.Get, "/api/v1/metadataprofile");
+                var response = await _httpClient.SendAsync(req).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return null;
+                }
+
+                var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                return JsonSerializer.Deserialize<LidarrMetadataProfile[]>(content, _jsonOptions);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get metadata profiles from Lidarr");
+                return null;
             }
         }
 

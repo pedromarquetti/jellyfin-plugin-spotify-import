@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Viperinius.Plugin.SpotifyImport.Lidarr
@@ -10,10 +11,26 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
 
         Task<LidarrAlbum?> GetAlbum(string foreignAlbumId);
 
+        Task<LidarrAlbum?> SearchAlbum(string query);
+
         Task<LidarrAlbum?> AddAlbum(LidarrAddAlbumRequest request);
 
         Task<bool> UpdateAlbum(int id, LidarrAlbumUpdateRequest request);
 
+        Task<LidarrArtist?> SearchArtist(string query);
+
+        Task<LidarrArtist?> AddArtist(LidarrAddArtistRequest request);
+
+        Task<bool> UpdateArtist(int id, LidarrArtist artist);
+
+        Task<List<LidarrAlbum>> GetArtistAlbums(int artistId);
+
         Task<LidarrCommandResponse?> SendCommand(LidarrCommandRequest command);
+
+        Task<LidarrRootFolder[]?> GetRootFolders();
+
+        Task<LidarrQualityProfile[]?> GetQualityProfiles();
+
+        Task<LidarrMetadataProfile[]?> GetMetadataProfiles();
     }
 }

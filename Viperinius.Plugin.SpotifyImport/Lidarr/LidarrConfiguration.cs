@@ -46,6 +46,11 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
         public int MetadataProfileId { get; set; } = 1;
 
         /// <summary>
+        /// Gets or sets a value indicating whether to search by album name as fallback.
+        /// </summary>
+        public bool SearchByAlbumName { get; set; } = true;
+
+        /// <summary>
         /// Gets or sets a value indicating whether automatic Lidarr sync is enabled.
         /// </summary>
         public bool AutoSync { get; set; }
