@@ -145,6 +145,7 @@ namespace Viperinius.Plugin.SpotifyImport.Tasks
 
             var albumList = uniqueAlbums.Values.ToList();
             var processed = 0;
+            var resolvedArtists = new Dictionary<string, LidarrArtist>(StringComparer.OrdinalIgnoreCase);
 
             using var dbRepo = new DbRepository(Plugin.Instance!.DbPath);
             dbRepo.InitDb();
@@ -155,6 +156,87 @@ namespace Viperinius.Plugin.SpotifyImport.Tasks
                 processed++;
 
                 _logger.LogInformation("Processing album: {Artist} - {Album}", album.ArtistName, album.AlbumName);
+
+                // ===== Phase 1: Ensure artist exists in Lidarr and is monitored =====
+
+                var artistName = album.ArtistName ?? string.Empty;
+                if (!resolvedArtists.TryGetValue(artistName, out var lidarrArtist))
+                {
+                    lidarrArtist = await lidarrService.SearchArtist(artistName).ConfigureAwait(false);
+                    if (lidarrArtist != null && lidarrArtist.Id > 0)
+                    {
+                        // Artist exists in Lidarr — ensure monitored
+                        if (!lidarrArtist.Monitored)
+                        {
+                            _logger.LogInformation("Artist {Artist} exists but not monitored; updating", artistName);
+                            lidarrArtist.Monitored = true;
+                            lidarrArtist.RootFolderPath = lidarrConfig.RootFolderPath;
+                            lidarrArtist.QualityProfileId = lidarrConfig.QualityProfileId;
+                            lidarrArtist.MetadataProfileId = lidarrConfig.MetadataProfileId;
+                            lidarrArtist.AddOptions = null;
+
+                            await lidarrService.UpdateArtist(lidarrArtist.Id, lidarrArtist).ConfigureAwait(false);
+                        }
+
+                        resolvedArtists[artistName] = lidarrArtist;
+                    }
+                    else
+                    {
+                        // Artist not in Lidarr. If SearchArtist returned a MusicBrainz
+                        // hit (Id == 0), reuse its ForeignArtistId.
+                        var foreignArtistId = lidarrArtist?.ForeignArtistId;
+
+                        if (string.IsNullOrWhiteSpace(foreignArtistId))
+                        {
+                            // Last resort: try album search for the artist's MB ID.
+                            var artistLookup = await lidarrService.SearchAlbum(artistName).ConfigureAwait(false);
+                            foreignArtistId = artistLookup?.Artist?.ForeignArtistId;
+                        }
+
+                        if (string.IsNullOrWhiteSpace(foreignArtistId))
+                        {
+                            _logger.LogWarning("Could not determine MusicBrainz artist ID for {Artist}; skipping", artistName);
+                            continue;
+                        }
+
+                        _logger.LogInformation("Artist {Artist} not found in Lidarr; adding", artistName);
+                        lidarrArtist = await lidarrService.AddArtist(new LidarrAddArtistRequest
+                        {
+                            ForeignArtistId = foreignArtistId,
+                            ArtistName = artistName,
+                            Monitored = true,
+                            RootFolderPath = lidarrConfig.RootFolderPath,
+                            QualityProfileId = lidarrConfig.QualityProfileId,
+                            MetadataProfileId = lidarrConfig.MetadataProfileId,
+                            AddOptions = new LidarrAddArtistOptions
+                            {
+                                Monitor = "none",
+                                SearchForNewAlbum = false,
+                            },
+                        }).ConfigureAwait(false);
+
+                        if (lidarrArtist == null || lidarrArtist.Id == 0)
+                        {
+                            _logger.LogError("Failed to add artist {Artist} to Lidarr", artistName);
+                            continue;
+                        }
+
+                        if (!lidarrArtist.Monitored)
+                        {
+                            _logger.LogInformation("Artist {Artist} added but not monitored; fixing", artistName);
+                            lidarrArtist.Monitored = true;
+                            lidarrArtist.RootFolderPath = lidarrConfig.RootFolderPath;
+                            lidarrArtist.QualityProfileId = lidarrConfig.QualityProfileId;
+                            lidarrArtist.MetadataProfileId = lidarrConfig.MetadataProfileId;
+                            lidarrArtist.AddOptions = null;
+                            await lidarrService.UpdateArtist(lidarrArtist.Id, lidarrArtist).ConfigureAwait(false);
+                        }
+
+                        resolvedArtists[artistName] = lidarrArtist;
+                    }
+                }
+
+                // ===== Phase 2: Find the specific album and ensure it is monitored =====
 
                 // resolve MusicBrainz release group ID from cached ISRC mappings
                 var releaseGroupIds = new HashSet<string>();
@@ -170,62 +252,101 @@ namespace Viperinius.Plugin.SpotifyImport.Tasks
                     }
                 }
 
-                if (releaseGroupIds.Count == 0)
-                {
-                    _logger.LogWarning("No MusicBrainz release group ID found in cache for album {Album} by {Artist}; skipping (ISRC-based MusicBrainz lookup may not have run yet)", album.AlbumName, album.ArtistName);
-                    continue;
-                }
+                LidarrAlbum? targetAlbum = null;
 
-                var lookupResult = await lidarrService.LookupAlbum(releaseGroupIds.First()).ConfigureAwait(false);
-                if (lookupResult == null)
+                // 2a — try to find album via MusicBrainz release group ID lookup
+                if (releaseGroupIds.Count > 0)
                 {
-                    _logger.LogWarning("Could not find album {Album} by {Artist} in Lidarr", album.AlbumName, album.ArtistName);
-                    continue;
-                }
-
-                // check if album already exists in Lidarr
-                var existingAlbum = await lidarrService.GetAlbum(lookupResult.ForeignAlbumId ?? string.Empty).ConfigureAwait(false);
-                if (existingAlbum != null)
-                {
-                    // album exists, just ensure it's monitored and trigger search
-                    if (!existingAlbum.Monitored)
+                    var mbResult = await lidarrService.LookupAlbum(releaseGroupIds.First()).ConfigureAwait(false);
+                    if (mbResult != null && mbResult.Id > 0 && MatchesArtist(mbResult, lidarrArtist))
                     {
-                        await lidarrService.UpdateAlbum(existingAlbum.Id, new LidarrAlbumUpdateRequest
+                        targetAlbum = mbResult;
+                    }
+                }
+
+                // 2b — search by name
+                if (targetAlbum == null && lidarrConfig.SearchByAlbumName)
+                {
+                    var query = $"{album.ArtistName} {album.AlbumName}";
+                    _logger.LogInformation("No MusicBrainz ID cached; searching by name: {Query}", query);
+                    var nameResult = await lidarrService.SearchAlbum(query).ConfigureAwait(false);
+                    if (nameResult != null && nameResult.Id > 0 && MatchesArtist(nameResult, lidarrArtist))
+                    {
+                        targetAlbum = nameResult;
+                    }
+                }
+
+                // 2c — list all albums for the artist and match by name
+                if (targetAlbum == null && lidarrArtist.Id > 0)
+                {
+                    var artistAlbums = await lidarrService.GetArtistAlbums(lidarrArtist.Id).ConfigureAwait(false);
+                    _logger.LogInformation("Artist has {Count} albums in Lidarr", artistAlbums.Count);
+                    targetAlbum = artistAlbums.FirstOrDefault(a =>
+                        string.Equals(a.Title, album.AlbumName, StringComparison.OrdinalIgnoreCase));
+                    if (targetAlbum != null)
+                    {
+                        _logger.LogInformation("Found album {Album} in artist's album list", album.AlbumName);
+                    }
+                }
+
+                if (targetAlbum != null)
+                {
+                    // album exists — ensure monitored + trigger search
+                    if (!targetAlbum.Monitored)
+                    {
+                        _logger.LogInformation("Album {Album} exists but not monitored; updating", album.AlbumName);
+                        await lidarrService.UpdateAlbum(targetAlbum.Id, new LidarrAlbumUpdateRequest
                         {
-                            Id = existingAlbum.Id,
+                            Id = targetAlbum.Id,
                             Monitored = true,
-                            ArtistId = existingAlbum.ArtistId,
-                            ForeignAlbumId = existingAlbum.ForeignAlbumId,
-                            Title = existingAlbum.Title,
-                            ProfileId = existingAlbum.ProfileId,
+                            ArtistId = targetAlbum.ArtistId,
+                            ForeignAlbumId = targetAlbum.ForeignAlbumId,
+                            Title = targetAlbum.Title,
+                            ProfileId = targetAlbum.ProfileId,
                         }).ConfigureAwait(false);
                     }
 
                     await lidarrService.SendCommand(new LidarrCommandRequest
                     {
                         Name = "AlbumSearch",
-                        AlbumIds = new List<int> { existingAlbum.Id },
+                        AlbumIds = new List<int> { targetAlbum.Id },
                     }).ConfigureAwait(false);
                 }
                 else
                 {
-                    // album doesn't exist, add it
+                    // album doesn't exist in Lidarr at all — add it
+                    var foreignAlbumId = string.Empty;
+                    if (releaseGroupIds.Count > 0)
+                    {
+                        var mbLookup = await lidarrService.LookupAlbum(releaseGroupIds.First()).ConfigureAwait(false);
+                        foreignAlbumId = mbLookup?.ForeignAlbumId ?? string.Empty;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(foreignAlbumId) && lidarrConfig.SearchByAlbumName)
+                    {
+                        var nameLookup = await lidarrService.SearchAlbum($"{album.ArtistName} {album.AlbumName}").ConfigureAwait(false);
+                        foreignAlbumId = nameLookup?.ForeignAlbumId ?? string.Empty;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(foreignAlbumId))
+                    {
+                        _logger.LogWarning("Could not find MusicBrainz album ID for {Album} by {Artist}; skipping", album.AlbumName, album.ArtistName);
+                        continue;
+                    }
+
+                    _logger.LogInformation("Adding album {Album} to Lidarr", album.AlbumName);
                     var addResult = await lidarrService.AddAlbum(new LidarrAddAlbumRequest
                     {
-                        ForeignAlbumId = lookupResult.ForeignAlbumId,
+                        ForeignAlbumId = foreignAlbumId,
                         Artist = new LidarrArtist
                         {
-                            ForeignArtistId = lookupResult.ForeignArtistId,
-                            ArtistName = lookupResult.Artist?.ArtistName ?? album.ArtistName,
+                            Id = lidarrArtist.Id,
+                            ForeignArtistId = lidarrArtist.ForeignArtistId,
+                            ArtistName = lidarrArtist.ArtistName,
                             Monitored = true,
-                            RootFolderPath = lidarrConfig.RootFolderPath,
                             QualityProfileId = lidarrConfig.QualityProfileId,
                             MetadataProfileId = lidarrConfig.MetadataProfileId,
-                            AddOptions = new LidarrAddArtistOptions
-                            {
-                                Monitor = "none",
-                                SearchForNewAlbum = true,
-                            },
+                            RootFolderPath = lidarrConfig.RootFolderPath,
                         },
                         Monitored = true,
                         QualityProfileId = lidarrConfig.QualityProfileId,
@@ -266,6 +387,29 @@ namespace Viperinius.Plugin.SpotifyImport.Tasks
                     MaxRuntimeTicks = TimeSpan.FromHours(2).Ticks,
                 }
             };
+        }
+
+        private static bool MatchesArtist(LidarrAlbum album, LidarrArtist artist)
+        {
+            if (artist.Id > 0 && album.ArtistId == artist.Id)
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(artist.ForeignArtistId)
+                && string.Equals(album.ForeignArtistId, artist.ForeignArtistId, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (album.Artist != null
+                && !string.IsNullOrWhiteSpace(artist.ForeignArtistId)
+                && string.Equals(album.Artist.ForeignArtistId, artist.ForeignArtistId, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private class AlbumData
