@@ -311,10 +311,13 @@ export default function (view) {
             document.querySelector('#LidarrEnabled').checked = lidarr.Enabled || false;
             document.querySelector('#LidarrUrl').value = lidarr.Url || '';
             document.querySelector('#LidarrApiKey').value = lidarr.ApiKey || '';
-            document.querySelector('#LidarrRootFolderPath').value = lidarr.RootFolderPath || '';
-            document.querySelector('#LidarrQualityProfileId').value = lidarr.QualityProfileId || 1;
-            document.querySelector('#LidarrMetadataProfileId').value = lidarr.MetadataProfileId || 1;
             document.querySelector('#LidarrAutoSync').checked = lidarr.AutoSync || false;
+
+            if (lidarr.Url && lidarr.ApiKey) {
+                loadLidarrOptions(lidarr.Url, lidarr.ApiKey, lidarr.RootFolderPath, lidarr.QualityProfileId, lidarr.MetadataProfileId);
+            }
+
+            toggleLidarrConfig();
 
             ApiClient.getJSON(ApiClient.getUrl('Users'), apiQueryOpts).then(function (result) {
                 users.length = 0;
@@ -382,13 +385,24 @@ export default function (view) {
             config.UseLegacyMatching = document.querySelector('#UseLegacyMatching').checked;
             config.EnabledTrackMatchFindersRaw = getEnabledTrackMatchFindersFromCheckboxes();
 
+            const lidarrRootFolder = document.querySelector('#LidarrRootFolderPath').value;
+            const lidarrQualityProfile = parseInt(document.querySelector('#LidarrQualityProfileId').value);
+            const lidarrMetadataProfile = parseInt(document.querySelector('#LidarrMetadataProfileId').value);
+
+            if (config.Lidarr && config.Lidarr.Enabled && !lidarrRootFolder) {
+                Dashboard.alert('Root folder path is required when Lidarr is enabled.');
+                Dashboard.hideLoadingMsg();
+                return;
+            }
+
             config.Lidarr = {
                 Enabled: document.querySelector('#LidarrEnabled').checked,
                 Url: document.querySelector('#LidarrUrl').value,
                 ApiKey: document.querySelector('#LidarrApiKey').value,
-                RootFolderPath: document.querySelector('#LidarrRootFolderPath').value,
-                QualityProfileId: parseInt(document.querySelector('#LidarrQualityProfileId').value) || 1,
-                MetadataProfileId: parseInt(document.querySelector('#LidarrMetadataProfileId').value) || 1,
+                RootFolderPath: lidarrRootFolder,
+                QualityProfileId: lidarrQualityProfile || 1,
+                MetadataProfileId: lidarrMetadataProfile || 1,
+                SearchByAlbumName: true,
                 AutoSync: document.querySelector('#LidarrAutoSync').checked
             };
 
@@ -472,6 +486,84 @@ export default function (view) {
         });
     });
 
+    function toggleLidarrConfig() {
+        const enabled = document.querySelector('#LidarrEnabled').checked;
+        const section = document.querySelector('#lidarrConfigSection');
+        if (section) {
+            section.style.display = enabled ? '' : 'none';
+        }
+    }
+
+    document.querySelector('#LidarrEnabled').addEventListener('change', toggleLidarrConfig);
+
+    function populateSelect(selectId, items, valueKey, labelKey, defaultOptionText, selectedValue) {
+        const select = document.querySelector(selectId);
+        let html = '<option value="">' + (defaultOptionText || 'Select...') + '</option>';
+        items.forEach(function (item) {
+            const val = item[valueKey];
+            const label = item[labelKey];
+            const selected = val == selectedValue || (val === '' && !selectedValue) ? ' selected' : '';
+            html += '<option value="' + val + '"' + selected + '>' + label + '</option>';
+        });
+        select.innerHTML = html;
+    }
+
+    function loadLidarrOptions(url, apiKey, selectedRootFolder, selectedQualityProfile, selectedMetadataProfile) {
+        const apiUrl = ApiClient.getUrl(SpotifyImportConfig.pluginApiBaseUrl + '/Lidarr/RootFolders', {
+            url: url,
+            apiKey: apiKey
+        });
+
+        ApiClient.fetch({
+            url: apiUrl,
+            type: 'GET',
+            dataType: 'json',
+            headers: { accept: 'application/json' }
+        }, true).then(function (json) {
+            if (json) {
+                populateSelect('#LidarrRootFolderPath', json, 'path', 'path', 'Select a root folder...', selectedRootFolder);
+            }
+        }).catch(function (error) {
+            console.error('Failed to load root folders', error);
+        });
+
+        const qualityUrl = ApiClient.getUrl(SpotifyImportConfig.pluginApiBaseUrl + '/Lidarr/QualityProfiles', {
+            url: url,
+            apiKey: apiKey
+        });
+
+        ApiClient.fetch({
+            url: qualityUrl,
+            type: 'GET',
+            dataType: 'json',
+            headers: { accept: 'application/json' }
+        }, true).then(function (json) {
+            if (json) {
+                populateSelect('#LidarrQualityProfileId', json, 'id', 'name', 'Select a quality profile...', selectedQualityProfile);
+            }
+        }).catch(function (error) {
+            console.error('Failed to load quality profiles', error);
+        });
+
+        const metadataUrl = ApiClient.getUrl(SpotifyImportConfig.pluginApiBaseUrl + '/Lidarr/MetadataProfiles', {
+            url: url,
+            apiKey: apiKey
+        });
+
+        ApiClient.fetch({
+            url: metadataUrl,
+            type: 'GET',
+            dataType: 'json',
+            headers: { accept: 'application/json' }
+        }, true).then(function (json) {
+            if (json) {
+                populateSelect('#LidarrMetadataProfileId', json, 'id', 'name', 'Select a metadata profile...', selectedMetadataProfile);
+            }
+        }).catch(function (error) {
+            console.error('Failed to load metadata profiles', error);
+        });
+    }
+
     // Lidarr test connection
     const testLidarrBtn = document.querySelector('#testLidarrConnection');
     const lidarrTestResult = document.querySelector('#lidarrTestResult');
@@ -501,9 +593,10 @@ export default function (view) {
             }
         }, true).then(function (json) {
             testLidarrBtn.disabled = false;
-            if (json && json.Success) {
-                const version = json.Version ? ' (v' + json.Version + ')' : '';
-                lidarrTestResult.innerHTML = '<span style="color: green;">&#10003; Connection successful' + version + '</span>';
+                    if (json && json.Success) {
+                        const version = json.Version ? ' (v' + json.Version + ')' : '';
+                        lidarrTestResult.innerHTML = '<span style="color: green;">&#10003; Connection successful' + version + '</span>';
+                        loadLidarrOptions(url, apiKey);
             } else {
                 const msg = json && json.Message ? json.Message : 'Unknown error';
                 lidarrTestResult.innerHTML = '<span style="color: red;">&#10007; ' + msg + '</span>';
@@ -513,5 +606,35 @@ export default function (view) {
             lidarrTestResult.innerHTML = '<span style="color: red;">&#10007; Request failed: ' + error + '</span>';
             console.error(error);
         });
+    });
+
+    // Lidarr load options
+    const loadLidarrOptionsBtn = document.querySelector('#loadLidarrOptions');
+    const lidarrOptionsResult = document.querySelector('#lidarrOptionsResult');
+    loadLidarrOptionsBtn.addEventListener('click', function () {
+        const url = document.querySelector('#LidarrUrl').value;
+        const apiKey = document.querySelector('#LidarrApiKey').value;
+
+        if (!url || !apiKey) {
+            lidarrOptionsResult.innerHTML = '<span style="color: orange;">Please fill in both URL and API key first.</span>';
+            return;
+        }
+
+        loadLidarrOptionsBtn.disabled = true;
+        lidarrOptionsResult.innerHTML = 'Loading options...';
+
+        loadLidarrOptions(url, apiKey);
+
+        // check when all selects have been populated
+        const checkDone = setInterval(function () {
+            const rootOpts = document.querySelector('#LidarrRootFolderPath').querySelectorAll('option').length;
+            const qualOpts = document.querySelector('#LidarrQualityProfileId').querySelectorAll('option').length;
+            const metaOpts = document.querySelector('#LidarrMetadataProfileId').querySelectorAll('option').length;
+            if (rootOpts > 1 && qualOpts > 1 && metaOpts > 1) {
+                clearInterval(checkDone);
+                loadLidarrOptionsBtn.disabled = false;
+                lidarrOptionsResult.innerHTML = '<span style="color: green;">&#10003; Options loaded</span>';
+            }
+        }, 200);
     });
 }

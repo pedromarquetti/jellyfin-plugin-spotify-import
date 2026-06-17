@@ -263,22 +263,28 @@
                                     API key from Lidarr (Settings &gt; General &gt; API Key).
                                 </div>
                             </div>
-                            <div class="inputContainer">
-                                <input id="LidarrRootFolderPath" type="text" is="emby-input" label="Root Folder Path" />
+                            <div class="selectContainer">
+                                <select id="LidarrRootFolderPath" is="emby-select" label="Root Folder Path">
+                                    <option value="">Select a root folder...</option>
+                                </select>
                                 <div class="fieldDescription">
                                     Root folder where Lidarr should store downloaded music.
                                 </div>
                             </div>
-                            <div class="inputContainer">
-                                <input id="LidarrQualityProfileId" type="text" is="emby-input" type="number" pattern="[0-9]+" min="1" label="Quality Profile ID" />
+                            <div class="selectContainer">
+                                <select id="LidarrQualityProfileId" is="emby-select" label="Quality Profile">
+                                    <option value="">Select a quality profile...</option>
+                                </select>
                                 <div class="fieldDescription">
-                                    The ID of the quality profile to use (default: 1). Find IDs in Lidarr under Settings &gt; Profiles.
+                                    The quality profile to use for downloads.
                                 </div>
                             </div>
-                            <div class="inputContainer">
-                                <input id="LidarrMetadataProfileId" type="text" is="emby-input" type="number" pattern="[0-9]+" min="1" label="Metadata Profile ID" />
+                            <div class="selectContainer">
+                                <select id="LidarrMetadataProfileId" is="emby-select" label="Metadata Profile">
+                                    <option value="">Select a metadata profile...</option>
+                                </select>
                                 <div class="fieldDescription">
-                                    The ID of the metadata profile to use (default: 1). Find IDs in Lidarr under Settings &gt; Profiles.
+                                    The metadata profile to use for downloads.
                                 </div>
                             </div>
                             <div class="checkboxContainer checkboxContainer-withDescription">
@@ -292,6 +298,12 @@
                                     <span>Test Lidarr Connection</span>
                                 </button>
                                 <div id="lidarrTestResult" class="fieldDescription"></div>
+                            </div>
+                            <div class="verticalSection">
+                                <button is="emby-button" type="button" id="loadLidarrOptions" class="raised block">
+                                    <span>Load Lidarr Options</span>
+                                </button>
+                                <div id="lidarrOptionsResult" class="fieldDescription"></div>
                             </div>
                         </div>
                     </div>
