@@ -350,6 +350,30 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
             }
         }
 
+        public async Task<bool> SetAlbumsMonitored(List<int> albumIds, bool monitored)
+        {
+            try
+            {
+                var request = new AlbumsMonitoredResource
+                {
+                    AlbumIds = albumIds,
+                    Monitored = monitored,
+                };
+
+                var json = JsonSerializer.Serialize(request, _jsonOptions);
+                using var req = CreateRequest(HttpMethod.Put, "/api/v1/album/monitor");
+                req.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.SendAsync(req).ConfigureAwait(false);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to set albums monitored in Lidarr");
+                return false;
+            }
+        }
+
         public async Task<LidarrCommandResponse?> SendCommand(LidarrCommandRequest command)
         {
             try

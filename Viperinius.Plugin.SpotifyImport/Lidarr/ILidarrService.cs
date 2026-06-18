@@ -17,6 +17,8 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
 
         Task<bool> UpdateAlbum(int id, LidarrAlbumUpdateRequest request);
 
+        Task<bool> SetAlbumsMonitored(List<int> albumIds, bool monitored);
+
         Task<LidarrArtist?> SearchArtist(string query);
 
         Task<LidarrArtist?> AddArtist(LidarrAddArtistRequest request);
