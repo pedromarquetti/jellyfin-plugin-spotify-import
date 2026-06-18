@@ -25,6 +25,9 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
         [JsonPropertyName("metadataProfileId")]
         public int MetadataProfileId { get; set; }
 
+        [JsonPropertyName("path")]
+        public string? Path { get; set; }
+
         [JsonPropertyName("addOptions")]
         public LidarrAddArtistOptions? AddOptions { get; set; }
     }

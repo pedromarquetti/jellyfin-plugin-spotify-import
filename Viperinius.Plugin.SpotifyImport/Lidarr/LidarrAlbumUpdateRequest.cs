@@ -21,5 +21,8 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
 
         [JsonPropertyName("profileId")]
         public int ProfileId { get; set; }
+
+        [JsonPropertyName("rootFolderPath")]
+        public string? RootFolderPath { get; set; }
     }
 }
