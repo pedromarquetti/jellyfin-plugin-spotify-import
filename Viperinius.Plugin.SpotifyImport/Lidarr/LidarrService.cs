@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
-using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -90,7 +89,7 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
             }
         }
 
-        public async Task<LidarrAlbum?> LookupAlbum(string mbReleaseGroupId)
+        public async Task<LidarrAlbum[]?> LookupAlbum(string mbReleaseGroupId)
         {
             try
             {
@@ -103,7 +102,7 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
 
                 var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 var results = JsonSerializer.Deserialize<LidarrAlbum[]>(content, _jsonOptions);
-                return results?.Length > 0 ? results[0] : null;
+                return results;
             }
             catch (Exception ex)
             {
@@ -160,25 +159,7 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
             }
         }
 
-        public async Task<bool> UpdateAlbum(int id, LidarrAlbumUpdateRequest request)
-        {
-            try
-            {
-                var json = JsonSerializer.Serialize(request, _jsonOptions);
-                using var req = CreateRequest(HttpMethod.Put, $"/api/v1/album/{id}");
-                req.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-
-                var response = await _httpClient.SendAsync(req).ConfigureAwait(false);
-                return response.IsSuccessStatusCode;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to update album {Id} in Lidarr", id);
-                return false;
-            }
-        }
-
-        public async Task<LidarrAlbum?> SearchAlbum(string query)
+        public async Task<LidarrAlbum[]?> SearchAlbum(string query)
         {
             try
             {
@@ -191,7 +172,7 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
 
                 var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 var results = JsonSerializer.Deserialize<LidarrAlbum[]>(content, _jsonOptions);
-                return results?.Length > 0 ? results[0] : null;
+                return results;
             }
             catch (Exception ex)
             {
@@ -200,7 +181,29 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
             }
         }
 
-        public async Task<LidarrArtist?> SearchArtist(string query)
+        public async Task<LidarrArtist[]?> ListAvailableArtists()
+        {
+            try
+            {
+                using var req = CreateRequest(HttpMethod.Get, $"/api/v1/artist/");
+                var response = await _httpClient.SendAsync(req).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return null;
+                }
+
+                var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var results = JsonSerializer.Deserialize<LidarrArtist[]>(content, _jsonOptions);
+                return results;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to list artists");
+                return null;
+            }
+        }
+
+        public async Task<LidarrArtist[]?> SearchArtist(string query)
         {
             try
             {
@@ -213,7 +216,7 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
 
                 var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 var results = JsonSerializer.Deserialize<LidarrArtist[]>(content, _jsonOptions);
-                return results?.Length > 0 ? results[0] : null;
+                return results;
             }
             catch (Exception ex)
             {
@@ -248,12 +251,18 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
             }
         }
 
-        public async Task<bool> UpdateArtist(int id, LidarrArtist artist)
+        public async Task<bool> SetArtistMonitored(int id, bool monitored)
         {
             try
             {
-                var json = JsonSerializer.Serialize(artist, _jsonOptions);
-                using var req = CreateRequest(HttpMethod.Put, $"/api/v1/artist/{id}");
+                var request = new LidarrArtistEditorRequest
+                {
+                    ArtistIds = new List<int> { id },
+                    Monitored = monitored,
+                };
+
+                var json = JsonSerializer.Serialize(request, _jsonOptions);
+                using var req = CreateRequest(HttpMethod.Put, "/api/v1/artist/editor");
                 req.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
                 var response = await _httpClient.SendAsync(req).ConfigureAwait(false);
@@ -261,7 +270,7 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to update artist {Id} in Lidarr", id);
+                _logger.LogError(ex, "Failed to set artist {Id} monitored status in Lidarr", id);
                 return false;
             }
         }

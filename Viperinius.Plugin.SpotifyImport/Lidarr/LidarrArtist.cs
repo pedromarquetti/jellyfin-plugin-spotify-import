@@ -5,7 +5,7 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
     internal class LidarrArtist
     {
         [JsonPropertyName("id")]
-        public int Id { get; set; }
+        public int? Id { get; set; }
 
         [JsonPropertyName("artistName")]
         public string? ArtistName { get; set; }

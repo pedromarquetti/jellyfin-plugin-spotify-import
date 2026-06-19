@@ -7,23 +7,23 @@ namespace Viperinius.Plugin.SpotifyImport.Lidarr
     {
         Task<LidarrTestResult> TestConnection(string url, string apiKey);
 
-        Task<LidarrAlbum?> LookupAlbum(string mbReleaseGroupId);
+        Task<LidarrAlbum[]?> LookupAlbum(string mbReleaseGroupId);
 
         Task<LidarrAlbum?> GetAlbum(string foreignAlbumId);
 
-        Task<LidarrAlbum?> SearchAlbum(string query);
+        Task<LidarrAlbum[]?> SearchAlbum(string query);
 
         Task<LidarrAlbum?> AddAlbum(LidarrAddAlbumRequest request);
 
-        Task<bool> UpdateAlbum(int id, LidarrAlbumUpdateRequest request);
-
         Task<bool> SetAlbumsMonitored(List<int> albumIds, bool monitored);
 
-        Task<LidarrArtist?> SearchArtist(string query);
+        Task<LidarrArtist[]?> SearchArtist(string query);
+
+        Task<LidarrArtist[]?> ListAvailableArtists();
 
         Task<LidarrArtist?> AddArtist(LidarrAddArtistRequest request);
 
-        Task<bool> UpdateArtist(int id, LidarrArtist artist);
+        Task<bool> SetArtistMonitored(int id, bool monitored);
 
         Task<List<LidarrAlbum>> GetArtistAlbums(int artistId);
 
