@@ -307,7 +307,7 @@ namespace Viperinius.Plugin.SpotifyImport.Tasks
                     MetadataProfileId = lidarrConfig.MetadataProfileId,
                     AddOptions = new LidarrAddArtistOptions
                     {
-                        Monitor = "all",
+                        Monitor = "none",
                         SearchForNewAlbum = false,
                     },
                 }).ConfigureAwait(false);
@@ -320,21 +320,36 @@ namespace Viperinius.Plugin.SpotifyImport.Tasks
                     continue;
                 }
 
+                // Wait for Lidarr's post-add processing (AlbumMonitoredService
+                // runs ~7s after add and unmonitors everything when Monitor="none").
+                // After it finishes, we re-apply Monitored=true so it sticks.
+                // BUG: check this logic, some artists / albums are being left unmonitored.
+                _logger.LogInformation("--> Waiting for post-add processing for \"{Artist}\"", lidarrArtist.ArtistName);
+                await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken).ConfigureAwait(false);
+
+                // Re-fetch current state after post-add processing
+                var postAddResults = await lidarrService.SearchArtist(artistName).ConfigureAwait(false);
+                var postAddArtist = postAddResults?.FirstOrDefault(a => a.Id.HasValue && a.Id.Value > 0);
+                if (postAddArtist != null)
+                {
+                    lidarrArtist = postAddArtist;
+                }
+
                 // ensure the newly added artist is monitored
                 int retryCount = 0;
                 while (!lidarrArtist.Monitored && retryCount < 3)
                 {
                     if (retryCount > 0)
                     {
-                        var refreshed = await lidarrService.SearchArtist(artistName).ConfigureAwait(false);
-                        var found = refreshed?.FirstOrDefault(a => a.Id.HasValue && a.Id.Value > 0);
-                        if (found == null)
+                        postAddResults = await lidarrService.SearchArtist(artistName).ConfigureAwait(false);
+                        postAddArtist = postAddResults?.FirstOrDefault(a => a.Id.HasValue && a.Id.Value > 0);
+                        if (postAddArtist == null)
                         {
                             _logger.LogWarning("Could not re-fetch artist {Artist} after add", artistName);
                             break;
                         }
 
-                        lidarrArtist = found;
+                        lidarrArtist = postAddArtist;
                     }
 
                     if (!lidarrArtist.Monitored)
